@@ -1,0 +1,228 @@
+---
+title: "Bike share Regression"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(fig.width=6, fig.height=3) 
+knitr::opts_chunk$set(message = FALSE)
+```
+# 1 Introduction
+
+For this assignment, we constructed a Regression model to predict the number of daily bike users based on the given dataset. A key advantage is that by predicting the number of daily bike users, we can create an efficient system to manage the bike inventory to ensure that demand can be met during different times and conditions throughout the year.
+
+```{r, echo=FALSE}
+
+library(tidyverse)
+library(broom)
+library(GGally)
+
+```
+
+
+
+```{r echo=FALSE}
+bikeshare = read.csv("HW1 bikeshare.csv")
+```
+
+```{r}
+bikeshare <- select(bikeshare, -instant)
+```
+
+```{r}
+bikeshare$dteday<- as.Date(bikeshare$dteday)
+bikeshare$yr<-as.factor(bikeshare$yr)
+bikeshare$mnth<-as.factor(bikeshare$mnth)
+bikeshare$season <- as.factor(bikeshare$season)
+bikeshare$holiday<- as.factor(bikeshare$holiday)
+bikeshare$weekday<- as.factor(bikeshare$weekday)
+bikeshare$workingday<- as.factor(bikeshare$workingday)
+bikeshare$weathersit<- as.factor(bikeshare$weathersit)
+```
+
+
+
+```{r}
+pairplot_graph <- ggpairs(bikeshare,                 
+        columns = 9:15)
+```
+
+```{r}
+season_wise <- ggplot(bikeshare,aes(x=yr,y=cnt,fill=season))+theme_minimal()+geom_col()+
+labs(x='Year',y='Total_Count',title='Season wise yearly distribution of counts')+geom_bar(position = "dodge", stat = "identity") +
+  scale_fill_brewer()
+
+```
+
+```{r}
+bp2 <- ggplot(bikeshare, aes(x=weekday, y=cnt)) +
+  geom_bar(stat="identity", fill = "skyblue") + labs(title = "Bicycle Rentals per weekdays", x = "Weekdays", y = "Count of users") + 
+  theme(text = element_text(size = 8))+scale_y_continuous( labels=function(x)x/1000 )
+
+```
+
+```{r}
+#column plot for season wise monthly distribution of counts
+season_month <- ggplot(bikeshare,aes(x=month,y=total_count,fill=season))+theme_minimal()+geom_col()+
+labs(x='Month',y='Total_Count',title='Season wise monthly distribution of counts')+geom_bar(stat = "identity") +
+  scale_fill_brewer()
+```
+
+```{r}
+#Violin plot for Yearly wise distribution of counts
+season_yr <- ggplot(bikeshare,aes(x=year,y=total_count,fill=year))+geom_violin()+theme_bw()+
+labs(x='Year',y='Total_Count',title='Yearly wise distribution of counts')
+```
+
+```{r}
+p1 <- ggplot(bikeshare, aes(workingday, total_count)) + 
+  geom_boxplot(aes(color = workingday, fill = workingday), alpha = 0.4) +
+  scale_x_discrete(labels = c("No", "Yes")) + theme_minimal() + 
+  theme(legend.position = "none", panel.grid.major = element_line(color = "lightgrey")) + 
+  labs(x = "Workday?", y = "Number of rentals", title = "Number of bike rentals by\nworkday/weekend")
+
+
+p2 <- ggplot(bikeshare, aes(holiday, total_count)) + 
+  geom_boxplot(aes(color = holiday, fill = holiday), alpha = 0.4) + 
+  scale_x_discrete(labels = c("No", "Yes")) + theme_minimal() + 
+  theme(legend.position = "none", panel.grid.major = element_line(color = "lightgrey")) + 
+  labs(x = "Holiday?", y = "Number of rentals", title = "Number of bike rentals by\nholiday/not holiday")
+```
+
+
+```{r}
+boxplot1 <- ggplot(bikeshare, aes(x = season, y = cnt, fill = season)) +
+  geom_boxplot(outlier.color = adjustcolor("black", alpha.f = 1), na.rm = TRUE) +
+  ylab("Number of Bike Rentals") +
+  ggtitle("No: of Bike rentals per season") +
+  scale_fill_manual(values = c("#55DDE0",  "#F6AE2D", "#F26419", "#33658A", "#2F4858", "#999999"), 
+                    name="Season:",
+                    breaks=c(1, 2, 3, 4),
+                    labels=c("Winter", "Spring", "Summer","Fall"))+
+  theme(text = element_text(size = 10), plot.title = element_text(size = 10, face="bold"))
+```
+
+```{r}
+boxplot2 <- ggplot(bikeshare, aes(x = season, y = temp, fill = season)) +
+  geom_boxplot(outlier.color = adjustcolor("black", alpha.f = 1), na.rm = TRUE) +
+  ylab("Temperature") +
+  ggtitle("Temperature vs Season") +
+  scale_fill_manual(values = c("#55DDE0",  "#F6AE2D", "#F26419", "#33658A", "#2F4858", "#999999"), 
+                    name="Season:",
+                    breaks=c(1, 2, 3, 4),
+                    labels=c("Winter", "Spring", "Summer","Fall"))+
+  theme(text = element_text(size = 10), plot.title = element_text(size = 1, face="bold"))
+```
+
+
+```{r}
+colname<-c("season","yr","mnth","holiday","weekday","workingday","weathersit" ,"temp","atemp","hum","windspeed","cnt")
+bikeshare_new <- bikeshare[colname]
+```
+
+```{r}
+dummy_variable = c("season","mnth","weathersit","weekday")
+
+bikeshare_new[dummy_variable] <- lapply(bikeshare_new[dummy_variable], factor)
+```
+
+
+```{r}
+library('fastDummies')
+
+bikeshare_new <- dummy_cols(bikeshare_new, select_columns=dummy_variable,
+                             remove_selected_columns = TRUE)
+```
+
+```{r}
+remove_variable = c("season_1", "mnth_1", "weathersit_1", "weekday_0")
+
+bikeshare_new <- select(bikeshare_new, -remove_variable)
+```
+
+```{r}
+numeric_variable = c("temp","atemp","hum","windspeed")
+```
+
+
+```{r}
+reg = lm(cnt~.,data=bikeshare_new)
+```
+
+
+```{r}
+remove_var = c("holiday", "atemp", "mnth_2", "mnth_4", "mnth_6", "mnth_7", "mnth_8", "mnth_11", "mnth_12", "weekday_2", "weekday_3", "weekday_4", "weekday_5")
+
+bikeshare_new <- select(bikeshare_new, -remove_var)
+```
+
+```{r}
+reg2 = lm(cnt~.,data=bikeshare_new)
+```
+
+```{r}
+library(car)
+
+vif_reg <- vif(reg2)
+```
+
+```{r}
+remove_var2 = c("mnth_3", "mnth_5", "weekday_1", "season_3")
+
+bikeshare_new <- select(bikeshare_new, -remove_var2)
+```
+
+```{r}
+reg3 = lm(cnt~.,data=bikeshare_new)
+```
+
+
+# 2 Regression Model Interpretation 
+
+* Dependent variable - Total(cnt)
+* Casual & Registered are two different categories of bike users. Since our goal is to predict the number of daily customers, we decide “total” is most valuable as a dependent variable.
+
+```{r,fig.align="center"}
+summary(reg3)
+```
+
+
+* F-statistic: 301.5,  p-value: < 2.2e-16 (The overall model is significant)
+* R-squared:0.8344 (83.44% of the total count can be explained by predictor variables)
+* There is no multicollinearity existing between the predictor variables, as all the values are within permissible range of below 5
+
+
+## Below are the insights and reccomendations from Model
+
+* With our model one of the important variables was Saturday, otherwise known as weekday 6. Saturday is shown to increase the baseline by **517.75** units and is the only statistically significant day of the week based on our model. This can also be seen in the below chart that shows **Saturday** having one of the highest counts of bike rentals for any day of the week. *With this finding we believe that Bike Sharing Systems can take advantage of the higher sales on Saturday.* 
+
+
+```{r,fig.height = 2, fig.width = 3.5, fig.align = "center"}
+bp2
+```
+\vspace{-5truemm}
+
+* There is evidence that there is a linear relationship between temperature and Number of bikes rentals. Temperature can be used as a strong predictor to predict the number of bike hires in the region. As we can analyse from the below scatter plot, the number of bikes hired acts as a function of temperature and the number increases substantially with the variation in the **temperature** i.e. for a single unit variation in temperature can increase the number of bike rentals by **6120.24** units.
+
+```{r,fig.height = 3, fig.width = 3.5, fig.align = "center"}
+plot1 <- plot(x=bikeshare$cnt, y=bikeshare$temp, xlab="Count of Users", ylab="Temperature")
+```
+
+* *One way for Bike Sharing Systems to take advantage of this is by offering a discount on the price of a bike rental when a user signs up for their membership program.* This will allow Bike Sharing Systems to convert “casual” users into registered users by leveraging the most popular day of the week. Bike Sharing Systems can then take the Saturday promotion a step further by offering a smaller discount for registered users to continue to rent bikes on an ongoing basis every Saturday and drive continued use.
+
+* Looking into our model, one of the key variables is the time of year that users rent bikes through Bike Sharing Systems. One way for us to look at the impact that **seasons** have on bike rentals. Based on the model the most value-added seasons are **Spring and Fall**, which typically includes milder temperatures that are better for bike riding. By looking further into our model, we can narrow down the specific months during each season that are the most valuable.
+
+* By doing this we can see that the most valuable season of the year is **Fall (season 4)** and that the best months during this period are **September (month 9)** and **October (month 10)**. This makes sense as the temperatures would be cooling down from the summer highs, but not quite the cold temperatures that come with the winter months. *To take advantage of this Bike Sharing Systems can run a marketing campaign to encourage people to get outside and enjoy the last few months of nice weather during the year.* 
+
+
+```{r,fig.height = 3, fig.width = 8, fig.align = "center"}
+require(gridExtra)
+
+grid.arrange(boxplot1, boxplot2, ncol=2)
+```
+
